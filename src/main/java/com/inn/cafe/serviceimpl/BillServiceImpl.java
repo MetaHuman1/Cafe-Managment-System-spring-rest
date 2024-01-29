@@ -11,6 +11,7 @@ import com.itextpdf.text.pdf.PdfPCell;
 import com.itextpdf.text.pdf.PdfPTable;
 import com.itextpdf.text.pdf.PdfWriter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.io.IOUtils;
 import org.json.JSONArray;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,8 +19,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 
-import java.io.FileOutputStream;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 
@@ -67,7 +71,7 @@ public class BillServiceImpl implements BillService {
                 table.setWidthPercentage(100);
                 addTableHeader(table);
 
-                JSONArray jsonArray =CafeUtils.getJsonArrayFromString((String) requestMap.get("productDetails"));
+                JSONArray jsonArray = CafeUtils.getJsonArrayFromString((String) requestMap.get("productDetails"));
                 for (int i=0; i<jsonArray.length();i++) {
                     addRows(table, CafeUtils.getMapFromJson(jsonArray.getString(i)));
                 }
@@ -145,11 +149,13 @@ public class BillServiceImpl implements BillService {
             Bill bill = new Bill();
             bill.setUuid((String) requestMap.get("uuid"));
             bill.setName((String) requestMap.get("name"));
-            bill.setEmail((String) requestMap.get("contactNumber"));
+            bill.setEmail((String) requestMap.get("email"));
+            bill.setContactNumber((String) requestMap.get("contactNumber"));
             bill.setPaymentMethod((String) requestMap.get("paymentMethod"));
             bill.setTotal(Integer.parseInt((String) requestMap.get("totalAmount")));
             bill.setProductDetails((String) requestMap.get("productDetails"));
             bill.setCreatedBy(jwtFilter.getCurrentUser());
+
             billDao.save(bill);
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -163,6 +169,64 @@ public class BillServiceImpl implements BillService {
                 requestMap.containsKey("paymentMethod") &&
                 requestMap.containsKey("productDetails") &&
                 requestMap.containsKey("totalAmount");
+    }
+
+
+    @Override
+    public ResponseEntity<List<Bill>> getBill() {
+        List<Bill> list = new ArrayList<>();
+        if (jwtFilter.isAdmin()) {
+            list = billDao.getAllBills();
+        }else {
+            list = billDao.getBillByUserName(jwtFilter.getCurrentUser());
+        }
+        return new ResponseEntity<>(list, HttpStatus.OK);
+    }
+
+    @Override
+    public ResponseEntity<byte[]> getPdf(Map<String, Object> requestMap) {
+        log.info("Inside getPdf : requestMap{}", requestMap);
+        try {
+            byte[] byteArray = new byte[0];
+            if (!requestMap.containsKey("uuid") && validateRequestMap(requestMap)) {
+                return new ResponseEntity<>(byteArray, HttpStatus.BAD_REQUEST);
+            }
+            String filePath = CafeConstants.STORE_LOCATION+"\\"+(String) requestMap.get("uuid") +".pdf";
+            if (CafeUtils.isFileExist(filePath)) {
+                byteArray = getByteArray(filePath);
+                return new ResponseEntity<>(byteArray, HttpStatus.OK);
+            } else {
+                requestMap.put("isGenerate", false);
+                generateReport(requestMap);
+                byteArray = getByteArray(filePath);
+                return new ResponseEntity<>(byteArray, HttpStatus.OK);
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public ResponseEntity<String> deleteBill(Integer id) {
+        try {
+            Optional optional = billDao.findById(id);
+            if (!optional.isEmpty()){
+                billDao.deleteById(id);
+                return CafeUtils.getResponseEntity("Bill Deleted Successfully", HttpStatus.OK);
+            }
+            return CafeUtils.getResponseEntity("Bill doesnt exist", HttpStatus.OK);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return CafeUtils.getResponseEntity(CafeConstants.SOMETHING_WENT_WRONG, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private byte[] getByteArray(String filePath) throws Exception {
+        File initialFile = new File(filePath);
+        InputStream targetStream = new FileInputStream(initialFile);
+        byte[] byteArray = IOUtils.toByteArray(targetStream);
+        return byteArray;
     }
 }
 

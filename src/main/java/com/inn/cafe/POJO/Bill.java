@@ -8,6 +8,11 @@ import javax.persistence.*;
 import java.io.Serializable;
 
 
+@NamedQuery(name = "Bill.getAllBills", query = "select  b from Bill b order by b.id desc")
+
+@NamedQuery(name = "Bill.getBillByUserName", query = "select b from Bill b where b.createdBy=:username order by b.id desc")
+
+
 @Data
 @Entity
 @DynamicInsert
@@ -39,7 +44,7 @@ public class Bill implements Serializable {
     @Column(name = "total")
     private Integer total;
 
-    @Column(name = "productDetails", columnDefinition = "json")
+    @Column(name = "productDetails", columnDefinition = "TEXT")
     private String productDetails;
 
     @Column(name = "createdBy")
